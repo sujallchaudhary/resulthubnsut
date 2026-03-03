@@ -15,6 +15,7 @@ A Node.js/Express REST API for the NSUT university result portal, backed by Mong
   - [GET /api/students/:rollNo](#get-apistudentsrollno)
   - [GET /api/stats](#get-apistats)
   - [GET /api/filter](#get-apifilter)
+- [Rate Limiting](#rate-limiting)
 - [Response Format](#response-format)
 - [Error Handling](#error-handling)
 
@@ -460,6 +461,30 @@ curl "http://localhost:3000/api/filter?year=2022&branch=UBT,UEC&page=1"
     "year": "2022",
     "branch": "UBT,UEC"
   }
+}
+```
+
+---
+
+## Rate Limiting
+
+All API routes are protected against abuse and bulk data scraping. Limits are enforced **per IP address** over a rolling 15-minute window. When a limit is exceeded the API responds with HTTP **429 Too Many Requests**. Standard `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers are included in every response.
+
+| Endpoint                      | Limit (per IP / 15 min) | Reason                                      |
+|-------------------------------|------------------------|---------------------------------------------|
+| `GET /api/students`           | **30**                 | Paginated list — primary scraping vector    |
+| `GET /api/filter`             | **30**                 | Paginated list — primary scraping vector    |
+| `GET /api/students/:rollNo`   | **60**                 | Roll-number enumeration prevention          |
+| `GET /api/stats`              | **20**                 | Single aggregated payload, rarely changes   |
+| All other `/api/` routes      | **100**                | Global catch-all                            |
+
+**429 response example:**
+
+```json
+{
+  "success": false,
+  "data": null,
+  "message": "Too many list requests from this IP. Please wait 15 minutes before trying again."
 }
 ```
 

@@ -18,7 +18,7 @@ app.use(express.urlencoded({ extended: false }));
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, data: null, message: 'Too many requests, please try again later.' },

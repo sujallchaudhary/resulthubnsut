@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { query, validationResult } = require('express-validator');
 const { getAllStudents, getStudentByRollNo } = require('../controllers/studentController');
+const { listLimiter, profileLimiter } = require('../middleware/rateLimits');
 
 const router = Router();
 
@@ -19,6 +20,7 @@ const handleValidation = (req, res, next) => {
 
 router.get(
   '/',
+  listLimiter,
   [
     query('page').optional().isInt({ min: 1 }).withMessage('page must be a positive integer'),
   ],
@@ -26,6 +28,6 @@ router.get(
   getAllStudents
 );
 
-router.get('/:rollNo', getStudentByRollNo);
+router.get('/:rollNo', profileLimiter, getStudentByRollNo);
 
 module.exports = router;
