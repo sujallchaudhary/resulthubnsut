@@ -3,6 +3,8 @@ const SGPA = require('../models/SGPA');
 
 const PAGE_LIMIT = 20;
 
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * GET /api/filter
  * Filters students by year and/or branch(es), then recalculates ranks within
@@ -12,11 +14,12 @@ const PAGE_LIMIT = 20;
  * Query params:
  *   year   - single batch year (e.g. "2022")
  *   branch - comma-separated branch codes (e.g. "UBT,UEC")
+ *   query  - partial or full roll number or name to search (case-insensitive)
  *   page   - page number (default 1)
  */
 const filterStudents = async (req, res, next) => {
   try {
-    const { year, branch } = req.query;
+    const { year, branch, query: searchQuery } = req.query;
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = PAGE_LIMIT;
 
@@ -32,6 +35,10 @@ const filterStudents = async (req, res, next) => {
       if (branches.length > 0) {
         filter.branch_code = { $in: branches };
       }
+    }
+    if (searchQuery) {
+      const regex = { $regex: escapeRegex(searchQuery.trim()), $options: 'i' };
+      filter.$or = [{ rollNo: regex }, { name: regex }];
     }
 
     const [pageSlice, total] = await Promise.all([
@@ -49,7 +56,7 @@ const filterStudents = async (req, res, next) => {
         data: [],
         message: 'No students found matching the given filters',
         pagination: { total: 0, page, limit, totalPages: 0 },
-        appliedFilters: { year: year || null, branch: branch || null },
+        appliedFilters: { year: year || null, branch: branch || null, query: searchQuery || null },
       });
     }
 
@@ -96,7 +103,7 @@ const filterStudents = async (req, res, next) => {
       data,
       message: 'Filtered students retrieved successfully',
       pagination: { total, page, limit, totalPages },
-      appliedFilters: { year: year || null, branch: branch || null },
+      appliedFilters: { year: year || null, branch: branch || null, query: searchQuery || null },
     });
   } catch (err) {
     next(err);

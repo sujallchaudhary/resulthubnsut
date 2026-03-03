@@ -9,6 +9,8 @@ const studentsRouter = require('./src/routes/students');
 const statsRouter = require('./src/routes/stats');
 const filterRouter = require('./src/routes/filter');
 const twinsDataStore = require('./src/cache/twinsDataStore');
+const wrappedRouter = require('./src/routes/wrapped');
+const subjectsRouter = require('./src/routes/subjects');
 
 const app = express();
 
@@ -34,6 +36,8 @@ app.get('/health', (_req, res) => {
 app.use('/api/students', studentsRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/filter', filterRouter);
+app.use('/api/wrapped', wrappedRouter);
+app.use('/api/subjects', subjectsRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ success: false, data: null, message: 'Route not found' });
