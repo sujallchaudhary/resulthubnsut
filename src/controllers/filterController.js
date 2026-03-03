@@ -3,6 +3,8 @@ const SGPA = require('../models/SGPA');
 
 const PAGE_LIMIT = 20;
 
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * GET /api/filter
  * Filters students by year and/or branch(es), then recalculates ranks within
@@ -36,12 +38,10 @@ const filterStudents = async (req, res, next) => {
       }
     }
     if (rollno) {
-      const escaped = rollno.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      filter.rollNo = { $regex: escaped, $options: 'i' };
+      filter.rollNo = { $regex: escapeRegex(rollno.trim()), $options: 'i' };
     }
     if (name) {
-      const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      filter.name = { $regex: escaped, $options: 'i' };
+      filter.name = { $regex: escapeRegex(name.trim()), $options: 'i' };
     }
 
     const [pageSlice, total] = await Promise.all([
