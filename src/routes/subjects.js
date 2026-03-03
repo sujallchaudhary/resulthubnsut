@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const { query, validationResult } = require('express-validator');
-const { filterStudents } = require('../controllers/filterController');
-const { listLimiter } = require('../middleware/rateLimits');
+const { getSubjectDifficulty } = require('../controllers/subjectController');
+const { statsLimiter } = require('../middleware/rateLimits');
 
 const router = Router();
 
@@ -19,16 +19,15 @@ const handleValidation = (req, res, next) => {
 };
 
 router.get(
-  '/',
-  listLimiter,
+  '/difficulty',
+  statsLimiter,
   [
-    query('year').optional().isString().trim().notEmpty().withMessage('year must be a non-empty string'),
+    query('semester').optional().isInt({ min: 1 }).withMessage('semester must be a positive integer'),
     query('branch').optional().isString().trim().notEmpty().withMessage('branch must be a non-empty string'),
-    query('query').optional().isString().trim().notEmpty().withMessage('query must be a non-empty string'),
     query('page').optional().isInt({ min: 1 }).withMessage('page must be a positive integer'),
   ],
   handleValidation,
-  filterStudents
+  getSubjectDifficulty
 );
 
 module.exports = router;
