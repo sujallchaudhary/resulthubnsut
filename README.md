@@ -15,6 +15,7 @@ A Node.js/Express REST API for the NSUT university result portal, backed by Mong
   - [GET /api/students/:rollNo](#get-apistudentsrollno)
   - [GET /api/stats](#get-apistats)
   - [GET /api/filter](#get-apifilter)
+  - [GET /api/subjects/difficulty](#get-apisubjectsdifficulty)
 - [Rate Limiting](#rate-limiting)
 - [Response Format](#response-format)
 - [Error Handling](#error-handling)
@@ -71,11 +72,13 @@ npm run dev
 │   ├── routes/
 │   │   ├── students.js       # /api/students routes
 │   │   ├── stats.js          # /api/stats routes
-│   │   └── filter.js         # /api/filter routes
+│   │   ├── filter.js         # /api/filter routes
+│   │   └── subjects.js       # /api/subjects routes
 │   ├── controllers/
 │   │   ├── studentController.js
 │   │   ├── statsController.js
-│   │   └── filterController.js
+│   │   ├── filterController.js
+│   │   └── subjectController.js
 │   └── db.js                 # MongoDB connection helper
 ├── server.js                 # Express app entry point
 ├── package.json
@@ -471,6 +474,90 @@ curl "http://localhost:3000/api/filter?query=RAHUL&page=1"
 
 ---
 
+### GET /api/subjects/difficulty
+
+Returns a Subject Difficulty Map built from score records. Each subject includes average marks, total students, grade distribution, a difficulty classification, and a killer flag indicating >30% of students received grade C or below.
+
+**Query Parameters:**
+
+| Parameter  | Type    | Description                                    |
+|------------|---------|------------------------------------------------|
+| `semester` | integer | Filter by semester number                      |
+| `branch`   | string  | Comma-separated branch codes (e.g. `UBT,UEC`) |
+| `page`     | integer | Page number (default `1`)                      |
+
+Page size is fixed at **20** per page. Results are sorted by average marks ascending (hardest subjects first).
+
+**Example Requests:**
+
+```bash
+# All subjects
+curl "http://localhost:3000/api/subjects/difficulty"
+
+# Filter by semester
+curl "http://localhost:3000/api/subjects/difficulty?semester=2"
+
+# Filter by branch
+curl "http://localhost:3000/api/subjects/difficulty?branch=UBT,UEC&page=1"
+```
+
+**Example Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "subjects": [
+      {
+        "subject_code": "CAECC203",
+        "avg_marks": 4.9,
+        "total_students": 320,
+        "difficulty": "Hard",
+        "is_killer": true,
+        "low_grade_percentage": 42.5,
+        "grade_distribution": {
+          "O": 10,
+          "A+": 20,
+          "A": 40,
+          "B+": 50,
+          "B": 64,
+          "C": 80,
+          "D": 36,
+          "F": 20
+        }
+      }
+    ],
+    "summary": {
+      "total_subjects": 85,
+      "hardest_subject": {
+        "subject_code": "CAECC203",
+        "avg_marks": 4.9,
+        "difficulty": "Hard"
+      },
+      "easiest_subject": {
+        "subject_code": "FCMT0201",
+        "avg_marks": 8.2,
+        "difficulty": "Easy"
+      },
+      "killer_count": 12
+    }
+  },
+  "message": "Subject difficulty map retrieved successfully",
+  "pagination": {
+    "total": 85,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 5
+  },
+  "appliedFilters": {
+    "semester": null,
+    "branch": null
+  }
+}
+```
+
+---
+
 ## Rate Limiting
 
 All API routes are protected against abuse and bulk data scraping. Limits are enforced **per IP address** over a rolling 15-minute window. When a limit is exceeded the API responds with HTTP **429 Too Many Requests**. Standard `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers are included in every response.
@@ -479,6 +566,7 @@ All API routes are protected against abuse and bulk data scraping. Limits are en
 |-------------------------------|------------------------|---------------------------------------------|
 | `GET /api/students`           | **30**                 | Paginated list — primary scraping vector    |
 | `GET /api/filter`             | **30**                 | Paginated list — primary scraping vector    |
+| `GET /api/subjects/difficulty`| **20**                 | Aggregated payload, rarely changes          |
 | `GET /api/students/:rollNo`   | **60**                 | Roll-number enumeration prevention          |
 | `GET /api/stats`              | **20**                 | Single aggregated payload, rarely changes   |
 | All other `/api/` routes      | **100**                | Global catch-all                            |

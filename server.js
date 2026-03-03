@@ -8,6 +8,7 @@ const connectDB = require('./src/db');
 const studentsRouter = require('./src/routes/students');
 const statsRouter = require('./src/routes/stats');
 const filterRouter = require('./src/routes/filter');
+const subjectsRouter = require('./src/routes/subjects');
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.get('/health', (_req, res) => {
 app.use('/api/students', studentsRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/filter', filterRouter);
+app.use('/api/subjects', subjectsRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ success: false, data: null, message: 'Route not found' });
