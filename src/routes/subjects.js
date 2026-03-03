@@ -24,6 +24,7 @@ router.get(
   [
     query('semester').optional().isInt({ min: 1 }).withMessage('semester must be a positive integer'),
     query('branch').optional().isString().trim().notEmpty().withMessage('branch must be a non-empty string'),
+    query('rollNo').optional().isString().trim().notEmpty().withMessage('rollNo must be a non-empty string'),
     query('page').optional().isInt({ min: 1 }).withMessage('page must be a positive integer'),
   ],
   handleValidation,

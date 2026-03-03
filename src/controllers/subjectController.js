@@ -1,9 +1,10 @@
 const Score = require('../models/Score');
+const Student = require('../models/Student');
 
 const PAGE_LIMIT = 20;
 
-const LOW_GRADES = ['C', 'D', 'F'];
-const KILLER_THRESHOLD = 0.3;
+const LOW_GRADES = ['C', 'D', 'F','FD'];
+const KILLER_THRESHOLD = 0.2;
 
 /**
  * Classify a subject's difficulty based on average marks (0–10 scale).
@@ -34,13 +35,27 @@ const classifyDifficulty = (avg) => {
  */
 const getSubjectDifficulty = async (req, res, next) => {
   try {
-    const { semester, branch } = req.query;
+    const { semester, rollNo } = req.query;
+    let { branch } = req.query;
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+
+    if (rollNo) {
+      const student = await Student.findOne({ rollNo }, 'branch_code').lean();
+      if (!student) {
+        return res.status(404).json({
+          success: false,
+          data: null,
+          message: `Student with roll number '${rollNo}' not found`,
+        });
+      }
+      branch = student.branch_code;
+    }
     const limit = PAGE_LIMIT;
 
     const matchStage = {};
     if (semester) {
-      matchStage.semester = parseInt(semester, 10);
+      const semInt = parseInt(semester, 10);
+      matchStage.semester = { $in: [semInt, String(semInt)] };
     }
     if (branch) {
       const branches = branch
@@ -60,7 +75,7 @@ const getSubjectDifficulty = async (req, res, next) => {
     pipeline.push({
       $group: {
         _id: '$subject_code',
-        avg_marks: { $avg: '$marks' },
+        avg_marks: { $avg: { $toDouble: '$marks' } },
         total_students: { $sum: 1 },
         grades: { $push: '$grade' },
       },
@@ -93,11 +108,14 @@ const getSubjectDifficulty = async (req, res, next) => {
     subjects.sort((a, b) => a.avg_marks - b.avg_marks);
 
     const total = subjects.length;
-    const totalPages = Math.ceil(total / limit);
-    const pageSlice = subjects.slice((page - 1) * limit, page * limit);
-
     const hardest = total > 0 ? subjects[0] : null;
     const easiest = total > 0 ? subjects[subjects.length - 1] : null;
+
+    // Re-sort by total_students descending (most popular on top)
+    subjects.sort((a, b) => b.total_students - a.total_students);
+
+    const totalPages = Math.ceil(total / limit);
+    const pageSlice = subjects.slice((page - 1) * limit, page * limit);
 
     return res.json({
       success: true,
@@ -116,7 +134,7 @@ const getSubjectDifficulty = async (req, res, next) => {
       },
       message: 'Subject difficulty map retrieved successfully',
       pagination: { total, page, limit, totalPages },
-      appliedFilters: { semester: semester || null, branch: branch || null },
+      appliedFilters: { semester: semester || null, branch: branch || null, rollNo: rollNo || null },
     });
   } catch (err) {
     next(err);
