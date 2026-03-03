@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const requestLogSchema = new mongoose.Schema(
   {
     path: { type: String, required: true },
+    feature: { type: String, default: null },
     query: { type: mongoose.Schema.Types.Mixed, default: {} },
     params: { type: mongoose.Schema.Types.Mixed, default: {} },
     statusCode: { type: Number, default: null },
