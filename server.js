@@ -60,9 +60,9 @@ const start = async () => {
   await connectDB();
 
   // Preload academic data into memory for the twins feature (non-blocking)
-  twinsDataStore.init().catch((err) => {
-    console.error('TwinsDataStore initial load failed:', err.message);
-  });
+  // twinsDataStore.init().catch((err) => {
+  //   console.error('TwinsDataStore initial load failed:', err.message);
+  // });
 
   app.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);

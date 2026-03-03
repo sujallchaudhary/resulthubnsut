@@ -1,10 +1,98 @@
 const Student = require('../models/Student');
 const SGPA = require('../models/SGPA');
 const Score = require('../models/Score');
+const OpenAI = require('openai');
 
 const GRADE_ORDER = ['O', 'A+', 'A', 'B+', 'B', 'C', 'D', 'F', 'AB'];
 const TOP_PERCENTILE_THRESHOLD = 90;
 const BOTTOM_PERCENTILE_THRESHOLD = 30;
+
+/* ── Nebius LLM client (lazy-init to avoid crash when env is missing) ── */
+let _client = null;
+const getClient = () => {
+  if (!_client) {
+    _client = new OpenAI({
+      baseURL: 'https://api.tokenfactory.nebius.com/v1/',
+      apiKey: process.env.NEBIUS_API_KEY,
+    });
+  }
+  return _client;
+};
+
+const SYSTEM_PROMPT = `You are ResultHub Wrapped — a witty, Gen-Z-friendly AI narrator that turns a student's semester performance data into a short, fun, Spotify-Wrapped-style story.
+
+Rules:
+1. Keep the narrative between 80-150 words.
+2. Use 2-3 relevant emojis naturally (don't overdo it).
+3. Reference specific subjects, grades, and percentile numbers from the data.
+4. Match the tone to the student's academic personality type provided.
+5. Include one motivational or humorous closing line.
+6. Do NOT hallucinate data — only reference what is provided.
+7. Write in second person ("you").
+8. Return ONLY the narrative text, no headings or markdown.`;
+
+/**
+ * Build the user message that feeds academic data to the LLM.
+ */
+const buildUserMessage = (data) => {
+  const subjectLines = data.subject_rankings
+    .map(
+      (s) =>
+        `  - ${s.subject_code}: grade ${s.grade}, marks ${s.marks}, percentile ${s.percentile ?? 'N/A'}`,
+    )
+    .join('\n');
+
+  const sgpaTrendLine =
+    data.sgpa_trend && data.sgpa_change !== null
+      ? `SGPA trend: ${data.sgpa_trend} (${data.sgpa_change > 0 ? '+' : ''}${data.sgpa_change})`
+      : 'SGPA trend: N/A';
+
+  return `Student: ${data.name} (${data.rollNo})
+Branch: ${data.branch_code} | Year: ${data.year_of_study} | Semester: ${data.semester}
+SGPA: ${data.sgpa ?? 'N/A'}
+${sgpaTrendLine}
+Batch percentile: ${data.batch_percentile ?? 'N/A'}%
+Academic personality: ${data.personality_emoji} ${data.academic_personality}
+
+Best grade: ${data.best_grade.subject_code} — ${data.best_grade.grade} (${data.best_grade.marks} marks)
+Toughest subject: ${data.toughest_subject.subject_code} — ${data.toughest_subject.grade} (${data.toughest_subject.marks} marks)
+
+Subject-wise breakdown:
+${subjectLines}
+
+Generate a personalized Wrapped narrative for this semester.`;
+};
+
+/**
+ * Call the Nebius LLM and return the generated narrative.
+ * Returns null on failure so the API still responds with data.
+ */
+const generateWrappedNarrative = async (wrappedData) => {
+  try {
+    const response = await getClient().chat.completions.create({
+      model: 'Qwen/Qwen3-32B-fast',
+      max_tokens: 512,
+      temperature: 0.8,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: buildUserMessage(wrappedData),
+            },
+          ],
+        },
+      ],
+    });
+
+    return response.choices?.[0]?.message?.content?.trim() || null;
+  } catch (error) {
+    console.error('LLM narrative generation failed:', error.message);
+    return null;
+  }
+};
 
 const gradeRank = (grade) => {
   const idx = GRADE_ORDER.indexOf(grade);
@@ -162,35 +250,42 @@ const getWrapped = async (req, res, next) => {
     /* ── Academic personality ─────────────────────────────────────── */
     const personality = determinePersonality(allSgpa, semesterNum, currentSgpa, subjectRankings);
 
+    /* ── Build response data ──────────────────────────────────────── */
+    const wrappedData = {
+      rollNo: student.rollNo,
+      name: student.name,
+      branch_code: student.branch_code,
+      year_of_study: student.year_of_study,
+      semester: semesterNum,
+      subjects_count: scores.length,
+      best_grade: {
+        subject_code: bestScore.subject_code,
+        grade: bestScore.grade,
+        marks: bestScore.marks,
+      },
+      toughest_subject: {
+        subject_code: toughestScore.subject_code,
+        grade: toughestScore.grade,
+        marks: toughestScore.marks,
+      },
+      sgpa: currentSgpa,
+      sgpa_change: sgpaChange,
+      sgpa_trend: sgpaTrend,
+      batch_percentile: batchPercentile,
+      academic_personality: personality.type,
+      personality_emoji: personality.emoji,
+      top_subjects: topSubjects,
+      bottom_subjects: bottomSubjects,
+      subject_rankings: subjectRankings,
+    };
+
+    /* ── LLM-generated narrative ──────────────────────────────────── */
+    const narrative = await generateWrappedNarrative(wrappedData);
+    wrappedData.ai_narrative = narrative;
+
     return res.json({
       success: true,
-      data: {
-        rollNo: student.rollNo,
-        name: student.name,
-        branch_code: student.branch_code,
-        year_of_study: student.year_of_study,
-        semester: semesterNum,
-        subjects_count: scores.length,
-        best_grade: {
-          subject_code: bestScore.subject_code,
-          grade: bestScore.grade,
-          marks: bestScore.marks,
-        },
-        toughest_subject: {
-          subject_code: toughestScore.subject_code,
-          grade: toughestScore.grade,
-          marks: toughestScore.marks,
-        },
-        sgpa: currentSgpa,
-        sgpa_change: sgpaChange,
-        sgpa_trend: sgpaTrend,
-        batch_percentile: batchPercentile,
-        academic_personality: personality.type,
-        personality_emoji: personality.emoji,
-        top_subjects: topSubjects,
-        bottom_subjects: bottomSubjects,
-        subject_rankings: subjectRankings,
-      },
+      data: wrappedData,
       message: 'Semester wrapped generated successfully',
     });
   } catch (err) {

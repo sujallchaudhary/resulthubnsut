@@ -27,6 +27,7 @@
     "express-rate-limit": "^8.2.1",
     "express-validator": "^7.3.1",
     "helmet": "^8.1.0",
-    "mongoose": "^8.9.5"
+    "mongoose": "^8.9.5",
+    "openai": "^6.25.0"
   }
 }
