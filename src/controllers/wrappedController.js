@@ -70,7 +70,7 @@ Generate a personalized Wrapped narrative for this semester.`;
 const generateWrappedNarrative = async (wrappedData) => {
   try {
     const response = await getClient().chat.completions.create({
-      model: 'Qwen/Qwen3-32B-fast',
+      model: 'meta-llama/Llama-3.3-70B-Instruct-fast',
       max_tokens: 512,
       temperature: 0.8,
       messages: [
@@ -109,7 +109,7 @@ const determinePersonality = (allSgpa, currentSemester, currentSgpa, subjectRank
   if (currentSgpa >= 9.0) return { type: 'The Perfectionist', emoji: '🎯' };
 
   const sgpas = allSgpa
-    .filter((s) => s.semester <= currentSemester)
+    .filter((s) => Number(s.semester) <= currentSemester)
     .map((s) => s.sgpa);
 
   if (sgpas.length >= 2) {
@@ -154,9 +154,16 @@ const getWrapped = async (req, res, next) => {
       });
     }
 
+    const semesterQuery = { $in: [semesterNum, String(semesterNum)] };
+
     const [scores, allSgpa] = await Promise.all([
-      Score.find({ roll_no: rollNo, semester: semesterNum }, '-__v -createdAt -updatedAt').lean(),
-      SGPA.find({ roll_no: rollNo }, '-__v -createdAt -updatedAt').sort({ semester: 1 }).lean(),
+      Score.collection
+        .find({ roll_no: rollNo, semester: semesterQuery }, { projection: { __v: 0, createdAt: 0, updatedAt: 0 } })
+        .toArray(),
+      SGPA.collection
+        .find({ roll_no: rollNo }, { projection: { __v: 0, createdAt: 0, updatedAt: 0 } })
+        .sort({ semester: 1 })
+        .toArray(),
     ]);
 
     if (scores.length === 0) {
@@ -167,7 +174,7 @@ const getWrapped = async (req, res, next) => {
       });
     }
 
-    const semesterSgpa = allSgpa.find((s) => s.semester === semesterNum);
+    const semesterSgpa = allSgpa.find((s) => Number(s.semester) === semesterNum);
     const currentSgpa = semesterSgpa ? semesterSgpa.sgpa : null;
 
     /* ── Best & toughest grade ────────────────────────────────────── */
@@ -184,7 +191,7 @@ const getWrapped = async (req, res, next) => {
     let sgpaChange = null;
     let sgpaTrend = null;
     if (semesterNum > 1 && currentSgpa !== null) {
-      const prevSgpa = allSgpa.find((s) => s.semester === semesterNum - 1);
+      const prevSgpa = allSgpa.find((s) => Number(s.semester) === semesterNum - 1);
       if (prevSgpa) {
         sgpaChange = parseFloat((currentSgpa - prevSgpa.sgpa).toFixed(2));
         if (sgpaChange > 0) sgpaTrend = 'UP';
@@ -200,10 +207,12 @@ const getWrapped = async (req, res, next) => {
         await Student.find({ year_of_study: student.year_of_study }, 'rollNo').lean()
       ).map((s) => s.rollNo);
 
-      const batchSgpas = await SGPA.find(
-        { roll_no: { $in: batchRollNos }, semester: semesterNum },
-        'sgpa',
-      ).lean();
+      const batchSgpas = await SGPA.collection
+        .find(
+          { roll_no: { $in: batchRollNos }, semester: semesterQuery },
+          { projection: { sgpa: 1 } },
+        )
+        .toArray();
 
       if (batchSgpas.length > 0) {
         const below = batchSgpas.filter((s) => s.sgpa < currentSgpa).length;
@@ -213,10 +222,12 @@ const getWrapped = async (req, res, next) => {
 
     /* ── Per-subject percentile rankings ─────────────────────────── */
     const subjectCodes = scores.map((s) => s.subject_code);
-    const allSubjectScores = await Score.find(
-      { subject_code: { $in: subjectCodes }, semester: semesterNum },
-      'subject_code marks',
-    ).lean();
+    const allSubjectScores = await Score.collection
+      .find(
+        { subject_code: { $in: subjectCodes }, semester: semesterQuery },
+        { projection: { subject_code: 1, marks: 1 } },
+      )
+      .toArray();
 
     const subjectScoresMap = {};
     for (const s of allSubjectScores) {
@@ -231,7 +242,7 @@ const getWrapped = async (req, res, next) => {
     for (const score of scores) {
       const pool = subjectScoresMap[score.subject_code] || [];
       const totalInSubject = pool.length;
-      const below = pool.filter((s) => s.marks < score.marks).length;
+      const below = pool.filter((s) => Number(s.marks) < Number(score.marks)).length;
       const percentile = totalInSubject > 0 ? Math.round((below / totalInSubject) * 100) : null;
 
       const ranking = {
