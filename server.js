@@ -8,6 +8,7 @@ const connectDB = require('./src/db');
 const studentsRouter = require('./src/routes/students');
 const statsRouter = require('./src/routes/stats');
 const filterRouter = require('./src/routes/filter');
+const wrappedRouter = require('./src/routes/wrapped');
 const subjectsRouter = require('./src/routes/subjects');
 
 const app = express();
@@ -34,6 +35,7 @@ app.get('/health', (_req, res) => {
 app.use('/api/students', studentsRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/filter', filterRouter);
+app.use('/api/wrapped', wrappedRouter);
 app.use('/api/subjects', subjectsRouter);
 
 app.use((_req, res) => {
