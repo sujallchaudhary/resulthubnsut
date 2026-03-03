@@ -9,15 +9,13 @@ const GRADE_LIST = ['O', 'A+', 'A', 'B+', 'B', 'C', 'D', 'F', 'AB'];
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 20;
-const CGPA_SEARCH_RANGE = 1.5;
-const CANDIDATE_CAP_SAME_DEPT = 200;
-const CANDIDATE_CAP_OTHER_DEPT = 100;
-const PHASE1_SHORTLIST = 40;
+const CGPA_SEARCH_RANGE = 2.5;
+const CANDIDATE_CAP_SAME_DEPT = 600;
+const CANDIDATE_CAP_OTHER_DEPT = 400;
+const PHASE1_SHORTLIST = 120;
 const DIVERSITY_RATIO = 0.3;
 
-/** Result-level cache: key = "rollNo:limit" → { ts, data } */
 const RESULT_CACHE = new Map();
-const RESULT_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 /* ── weight presets ── */
 
@@ -120,22 +118,11 @@ function identifyStrongWeak(scores, n = 3) {
 /* ── result cache helpers ── */
 
 function getCached(key) {
-  const entry = RESULT_CACHE.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.ts > RESULT_TTL_MS) {
-    RESULT_CACHE.delete(key);
-    return null;
-  }
-  return entry.data;
+  return RESULT_CACHE.get(key) ?? null;
 }
 
 function setCache(key, data) {
-  RESULT_CACHE.set(key, { ts: Date.now(), data });
-  // Lazy eviction: cap map size to prevent unbounded growth
-  if (RESULT_CACHE.size > 5000) {
-    const oldest = RESULT_CACHE.keys().next().value;
-    RESULT_CACHE.delete(oldest);
-  }
+  RESULT_CACHE.set(key, data);
 }
 
 /** Clear result cache (called when data store refreshes). */
