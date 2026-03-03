@@ -1,24 +1,24 @@
 const Student = require('../models/Student');
 const SGPA = require('../models/SGPA');
 
-const PAGE_SIZE_MAX = 100;
+const PAGE_LIMIT = 20;
 
 /**
  * GET /api/filter
  * Filters students by year and/or branch(es), then recalculates ranks within
  * the filtered set based on CGPA descending order.
+ * Page size is fixed at 20.
  *
  * Query params:
  *   year   - single batch year (e.g. "2022")
  *   branch - comma-separated branch codes (e.g. "UBT,UEC")
  *   page   - page number (default 1)
- *   limit  - page size (default 20, max 100)
  */
 const filterStudents = async (req, res, next) => {
   try {
     const { year, branch } = req.query;
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(PAGE_SIZE_MAX, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const limit = PAGE_LIMIT;
 
     const filter = {};
     if (year) {

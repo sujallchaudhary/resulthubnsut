@@ -172,15 +172,16 @@ Returns a paginated list of all students with semester-wise SGPA data.
 
 **Query Parameters:**
 
-| Parameter | Type    | Default | Description                |
-|-----------|---------|---------|----------------------------|
-| `page`    | integer | `1`     | Page number (min 1)        |
-| `limit`   | integer | `20`    | Page size (min 1, max 100) |
+| Parameter | Type    | Default | Description         |
+|-----------|---------|---------|---------------------|
+| `page`    | integer | `1`     | Page number (min 1) |
+
+Page size is fixed at **20** per page.
 
 **Example Request:**
 
 ```bash
-curl "http://localhost:3000/api/students?page=1&limit=5"
+curl "http://localhost:3000/api/students?page=1"
 ```
 
 **Example Response:**
@@ -219,8 +220,8 @@ curl "http://localhost:3000/api/students?page=1&limit=5"
   "pagination": {
     "total": 1240,
     "page": 1,
-    "limit": 5,
-    "totalPages": 248
+    "limit": 20,
+    "totalPages": 62
   }
 }
 ```
@@ -405,19 +406,20 @@ Filters students by year and/or branch with dynamic rank recalculation within th
 | `year`    | string  | Batch/enrollment year (e.g. `2022`)            |
 | `branch`  | string  | Comma-separated branch codes (e.g. `UBT,UEC`) |
 | `page`    | integer | Page number (default `1`)                      |
-| `limit`   | integer | Page size (default `20`, max `100`)            |
+
+Page size is fixed at **20** per page.
 
 **Example Requests:**
 
 ```bash
 # Filter by year
-curl "http://localhost:3000/api/filter?year=2022&page=1&limit=10"
+curl "http://localhost:3000/api/filter?year=2022&page=1"
 
 # Filter by branch
-curl "http://localhost:3000/api/filter?branch=UBT&page=1&limit=10"
+curl "http://localhost:3000/api/filter?branch=UBT&page=1"
 
 # Filter by both year and multiple branches
-curl "http://localhost:3000/api/filter?year=2022&branch=UBT,UEC&page=1&limit=10"
+curl "http://localhost:3000/api/filter?year=2022&branch=UBT,UEC&page=1"
 ```
 
 **Example Response:**
@@ -451,8 +453,8 @@ curl "http://localhost:3000/api/filter?year=2022&branch=UBT,UEC&page=1&limit=10"
   "pagination": {
     "total": 320,
     "page": 1,
-    "limit": 10,
-    "totalPages": 32
+    "limit": 20,
+    "totalPages": 16
   },
   "appliedFilters": {
     "year": "2022",
@@ -481,7 +483,7 @@ All endpoints return a consistent JSON envelope:
 }
 ```
 
-`pagination` is only present on list endpoints. `data` is `null` on error responses.
+`pagination` is only present on list endpoints. `data` is `null` on error responses. Page size is always fixed at **20**.
 
 ---
 

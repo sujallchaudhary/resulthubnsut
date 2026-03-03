@@ -23,7 +23,6 @@ router.get(
     query('year').optional().isString().trim().notEmpty().withMessage('year must be a non-empty string'),
     query('branch').optional().isString().trim().notEmpty().withMessage('branch must be a non-empty string'),
     query('page').optional().isInt({ min: 1 }).withMessage('page must be a positive integer'),
-    query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('limit must be between 1 and 100'),
   ],
   handleValidation,
   filterStudents
