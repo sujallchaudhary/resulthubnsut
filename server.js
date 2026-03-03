@@ -8,6 +8,7 @@ const connectDB = require('./src/db');
 const studentsRouter = require('./src/routes/students');
 const statsRouter = require('./src/routes/stats');
 const filterRouter = require('./src/routes/filter');
+const twinsDataStore = require('./src/cache/twinsDataStore');
 
 const app = express();
 
@@ -53,6 +54,12 @@ const PORT = process.env.PORT || 3000;
 
 const start = async () => {
   await connectDB();
+
+  // Preload academic data into memory for the twins feature (non-blocking)
+  twinsDataStore.init().catch((err) => {
+    console.error('TwinsDataStore initial load failed:', err.message);
+  });
+
   app.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
   });

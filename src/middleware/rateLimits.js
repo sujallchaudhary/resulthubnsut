@@ -42,4 +42,17 @@ const statsLimiter = rateLimit({
   message: makeMessage('Too many stats requests from this IP. Please wait 15 minutes before trying again.'),
 });
 
-module.exports = { listLimiter, profileLimiter, statsLimiter };
+/**
+ * Strict limiter for the academic-twins endpoint (GET /api/students/:rollNo/twins).
+ * This is a computationally heavy endpoint.
+ * 15 requests per 15 minutes per IP.
+ */
+const twinsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: makeMessage('Too many academic twins requests from this IP. Please wait 15 minutes before trying again.'),
+});
+
+module.exports = { listLimiter, profileLimiter, statsLimiter, twinsLimiter };

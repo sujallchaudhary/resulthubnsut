@@ -1,7 +1,8 @@
 const { Router } = require('express');
 const { query, validationResult } = require('express-validator');
 const { getAllStudents, getStudentByRollNo } = require('../controllers/studentController');
-const { listLimiter, profileLimiter } = require('../middleware/rateLimits');
+const { getAcademicTwins } = require('../controllers/twinsController');
+const { listLimiter, profileLimiter, twinsLimiter } = require('../middleware/rateLimits');
 
 const router = Router();
 
@@ -26,6 +27,19 @@ router.get(
   ],
   handleValidation,
   getAllStudents
+);
+
+router.get(
+  '/:rollNo/twins',
+  twinsLimiter,
+  [
+    query('limit')
+      .optional()
+      .isInt({ min: 1, max: 20 })
+      .withMessage('limit must be an integer between 1 and 20'),
+  ],
+  handleValidation,
+  getAcademicTwins
 );
 
 router.get('/:rollNo', profileLimiter, getStudentByRollNo);

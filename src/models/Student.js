@@ -15,4 +15,8 @@ const studentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Compound index for twins endpoint: filter by branch_code + cgpa range
+studentSchema.index({ branch_code: 1, cgpa: -1 });
+studentSchema.index({ cgpa: -1 });
+
 module.exports = mongoose.model('Student', studentSchema);
