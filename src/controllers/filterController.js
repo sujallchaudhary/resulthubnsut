@@ -14,13 +14,12 @@ const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  * Query params:
  *   year   - single batch year (e.g. "2022")
  *   branch - comma-separated branch codes (e.g. "UBT,UEC")
- *   rollno - partial or full roll number to search (case-insensitive)
- *   name   - partial or full student name to search (case-insensitive)
+ *   query  - partial or full roll number or name to search (case-insensitive)
  *   page   - page number (default 1)
  */
 const filterStudents = async (req, res, next) => {
   try {
-    const { year, branch, rollno, name } = req.query;
+    const { year, branch, query: searchQuery } = req.query;
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = PAGE_LIMIT;
 
@@ -37,11 +36,9 @@ const filterStudents = async (req, res, next) => {
         filter.branch_code = { $in: branches };
       }
     }
-    if (rollno) {
-      filter.rollNo = { $regex: escapeRegex(rollno.trim()), $options: 'i' };
-    }
-    if (name) {
-      filter.name = { $regex: escapeRegex(name.trim()), $options: 'i' };
+    if (searchQuery) {
+      const regex = { $regex: escapeRegex(searchQuery.trim()), $options: 'i' };
+      filter.$or = [{ rollNo: regex }, { name: regex }];
     }
 
     const [pageSlice, total] = await Promise.all([
@@ -59,7 +56,7 @@ const filterStudents = async (req, res, next) => {
         data: [],
         message: 'No students found matching the given filters',
         pagination: { total: 0, page, limit, totalPages: 0 },
-        appliedFilters: { year: year || null, branch: branch || null, rollno: rollno || null, name: name || null },
+        appliedFilters: { year: year || null, branch: branch || null, query: searchQuery || null },
       });
     }
 
@@ -106,7 +103,7 @@ const filterStudents = async (req, res, next) => {
       data,
       message: 'Filtered students retrieved successfully',
       pagination: { total, page, limit, totalPages },
-      appliedFilters: { year: year || null, branch: branch || null, rollno: rollno || null, name: name || null },
+      appliedFilters: { year: year || null, branch: branch || null, query: searchQuery || null },
     });
   } catch (err) {
     next(err);

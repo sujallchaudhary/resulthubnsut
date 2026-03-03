@@ -402,11 +402,12 @@ Filters students by year and/or branch with dynamic rank recalculation within th
 
 **Query Parameters:**
 
-| Parameter | Type    | Description                                    |
-|-----------|---------|------------------------------------------------|
-| `year`    | string  | Batch/enrollment year (e.g. `2022`)            |
-| `branch`  | string  | Comma-separated branch codes (e.g. `UBT,UEC`) |
-| `page`    | integer | Page number (default `1`)                      |
+| Parameter | Type    | Description                                                |
+|-----------|---------|-------------------------------------------------------------|
+| `year`    | string  | Batch/enrollment year (e.g. `2022`)                        |
+| `branch`  | string  | Comma-separated branch codes (e.g. `UBT,UEC`)             |
+| `query`   | string  | Search by roll number or name — matches if either contains the string (case-insensitive)  |
+| `page`    | integer | Page number (default `1`)                                  |
 
 Page size is fixed at **20** per page.
 
@@ -421,6 +422,9 @@ curl "http://localhost:3000/api/filter?branch=UBT&page=1"
 
 # Filter by both year and multiple branches
 curl "http://localhost:3000/api/filter?year=2022&branch=UBT,UEC&page=1"
+
+# Search by roll number or name
+curl "http://localhost:3000/api/filter?query=RAHUL&page=1"
 ```
 
 **Example Response:**
@@ -459,7 +463,8 @@ curl "http://localhost:3000/api/filter?year=2022&branch=UBT,UEC&page=1"
   },
   "appliedFilters": {
     "year": "2022",
-    "branch": "UBT,UEC"
+    "branch": "UBT,UEC",
+    "query": null
   }
 }
 ```

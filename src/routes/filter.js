@@ -24,8 +24,7 @@ router.get(
   [
     query('year').optional().isString().trim().notEmpty().withMessage('year must be a non-empty string'),
     query('branch').optional().isString().trim().notEmpty().withMessage('branch must be a non-empty string'),
-    query('rollno').optional().isString().trim().notEmpty().withMessage('rollno must be a non-empty string'),
-    query('name').optional().isString().trim().notEmpty().withMessage('name must be a non-empty string'),
+    query('query').optional().isString().trim().notEmpty().withMessage('query must be a non-empty string'),
     query('page').optional().isInt({ min: 1 }).withMessage('page must be a positive integer'),
   ],
   handleValidation,
