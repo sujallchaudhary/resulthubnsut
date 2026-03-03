@@ -3,6 +3,8 @@ const SGPA = require('../models/SGPA');
 const Score = require('../models/Score');
 
 const GRADE_ORDER = ['O', 'A+', 'A', 'B+', 'B', 'C', 'D', 'F', 'AB'];
+const TOP_PERCENTILE_THRESHOLD = 90;
+const BOTTOM_PERCENTILE_THRESHOLD = 30;
 
 const gradeRank = (grade) => {
   const idx = GRADE_ORDER.indexOf(grade);
@@ -23,10 +25,10 @@ const determinePersonality = (allSgpa, currentSemester, currentSgpa, subjectRank
     .map((s) => s.sgpa);
 
   if (sgpas.length >= 2) {
-    const isRising = sgpas.every((val, i) => i === 0 || val >= sgpas[i - 1]);
-    const isFalling = sgpas.every((val, i) => i === 0 || val <= sgpas[i - 1]);
+    const isRising = sgpas.every((val, i) => i === 0 || val > sgpas[i - 1]);
+    const isFalling = sgpas.every((val, i) => i === 0 || val < sgpas[i - 1]);
 
-    if (sgpas.length >= 3 && !isRising) {
+    if (sgpas.length >= 3 && !isRising && !isFalling) {
       const prevMin = Math.min(...sgpas.slice(0, -1));
       if (currentSgpa > prevMin) return { type: 'The Comeback Kid', emoji: '🔥' };
     }
@@ -153,8 +155,8 @@ const getWrapped = async (req, res, next) => {
       };
       subjectRankings.push(ranking);
 
-      if (percentile !== null && percentile >= 90) topSubjects.push(ranking);
-      if (percentile !== null && percentile <= 30) bottomSubjects.push(ranking);
+      if (percentile !== null && percentile >= TOP_PERCENTILE_THRESHOLD) topSubjects.push(ranking);
+      if (percentile !== null && percentile <= BOTTOM_PERCENTILE_THRESHOLD) bottomSubjects.push(ranking);
     }
 
     /* ── Academic personality ─────────────────────────────────────── */
