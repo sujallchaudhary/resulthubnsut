@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const connectDB = require('./src/db');
+const requestLogger = require('./src/middleware/requestLogger');
 
 const studentsRouter = require('./src/routes/students');
 const statsRouter = require('./src/routes/stats');
@@ -18,6 +19,7 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+app.use(requestLogger);
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
