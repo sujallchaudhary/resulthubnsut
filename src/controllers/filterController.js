@@ -6,6 +6,30 @@ const PAGE_LIMIT = 20;
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
+ * GET /api/filter/options
+ * Returns the available filter options (distinct years and branches).
+ */
+const getFilterOptions = async (_req, res, next) => {
+  try {
+    const [years, branches] = await Promise.all([
+      Student.distinct('year_of_study'),
+      Student.distinct('branch_code'),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        years: years.sort(),
+        branches: branches.sort(),
+      },
+      message: 'Filter options retrieved successfully',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * GET /api/filter
  * Filters students by year and/or branch(es), then recalculates ranks within
  * the filtered set based on CGPA descending order.
@@ -60,7 +84,6 @@ const filterStudents = async (req, res, next) => {
       });
     }
 
-    const rankOffset = (page - 1) * limit;
     const rollNos = pageSlice.map((s) => s.rollNo);
 
     const sgpaRecords = await SGPA.find(
@@ -82,15 +105,72 @@ const filterStudents = async (req, res, next) => {
       sgpaByRoll[roll].sort((a, b) => a.semester - b.semester);
     }
 
-    const data = pageSlice.map((student, index) => ({
+    // Ranking logic (search query never affects which rank is used):
+    // - No year & no branch → stored overall rank
+    // - Single branch, matches student's own branch → stored branch_rank
+    // - Single branch, different from student's branch → calculated rank within that branch
+    // - Year only, or year+branch, or multiple branches → calculated filtered rank
+    const parsedBranches = branch
+      ? branch.split(',').map((b) => b.trim().toUpperCase()).filter(Boolean)
+      : [];
+    const noYearFilter = !year;
+    const noBranchFilter = parsedBranches.length === 0;
+    const singleBranch = parsedBranches.length === 1;
+
+    // Identify students that need a computed rank
+    const needsComputed = [];
+    if (noYearFilter && noBranchFilter) {
+      // All use stored overall rank — nothing to compute
+    } else if (noYearFilter && singleBranch) {
+      // Students whose own branch matches the filter use stored branch_rank;
+      // others need a computed rank within that branch
+      pageSlice.forEach((s, i) => {
+        if (s.branch_code !== parsedBranches[0]) needsComputed.push({ student: s, index: i });
+      });
+    } else {
+      // All students need a computed rank within the year/branch set
+      pageSlice.forEach((s, i) => needsComputed.push({ student: s, index: i }));
+    }
+
+    // Compute ranks for students that need it: rank = (# with higher cgpa in base set) + 1
+    const filteredRankMap = {};
+    if (needsComputed.length > 0) {
+      const baseFilter = {};
+      if (year) baseFilter.year_of_study = year.trim();
+      if (parsedBranches.length > 0) baseFilter.branch_code = { $in: parsedBranches };
+
+      const counts = await Promise.all(
+        needsComputed.map(({ student }) =>
+          Student.countDocuments({ ...baseFilter, cgpa: { $gt: student.cgpa } })
+        )
+      );
+      needsComputed.forEach(({ student }, i) => {
+        filteredRankMap[student.rollNo] = counts[i] + 1;
+      });
+    }
+
+    const getRank = (student) => {
+      if (noYearFilter && noBranchFilter) return student.rank;
+      if (noYearFilter && singleBranch && student.branch_code === parsedBranches[0]) {
+        return student.branch_rank;
+      }
+      return filteredRankMap[student.rollNo] || 0;
+    };
+
+    const getRankType = (student) => {
+      if (noYearFilter && noBranchFilter) return 'overall';
+      if (noYearFilter && singleBranch && student.branch_code === parsedBranches[0]) return 'branch';
+      return 'filtered';
+    };
+
+    const data = pageSlice.map((student) => ({
       rollNo: student.rollNo,
       name: student.name,
       branch_code: student.branch_code,
       year_of_study: student.year_of_study,
       cgpa: student.cgpa,
-      overall_rank: student.rank,
-      branch_rank: student.branch_rank,
-      filtered_rank: rankOffset + index + 1,
+      rank: getRank(student),
+      rank_type: getRankType(student),
       percentile: student.percentile,
       credits_completed: student.credits_completed,
       semesters: sgpaByRoll[student.rollNo] || [],
@@ -110,4 +190,4 @@ const filterStudents = async (req, res, next) => {
   }
 };
 
-module.exports = { filterStudents };
+module.exports = { filterStudents, getFilterOptions };

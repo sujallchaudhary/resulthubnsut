@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { query, validationResult } = require('express-validator');
-const { filterStudents } = require('../controllers/filterController');
+const { filterStudents, getFilterOptions } = require('../controllers/filterController');
 const { listLimiter } = require('../middleware/rateLimits');
 
 const router = Router();
@@ -17,6 +17,8 @@ const handleValidation = (req, res, next) => {
   }
   next();
 };
+
+router.get('/options', listLimiter, getFilterOptions);
 
 router.get(
   '/',

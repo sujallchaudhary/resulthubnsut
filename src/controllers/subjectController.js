@@ -72,10 +72,12 @@ const getSubjectDifficulty = async (req, res, next) => {
       pipeline.push({ $match: matchStage });
     }
 
+    pipeline.push({ $match: { marks: { $type: 'number' } } });
+
     pipeline.push({
       $group: {
         _id: '$subject_code',
-        avg_marks: { $avg: { $toDouble: '$marks' } },
+        avg_marks: { $avg: '$marks' },
         total_students: { $sum: 1 },
         grades: { $push: '$grade' },
       },
