@@ -2,7 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
-const rateLimit = require('express-rate-limit');
 const connectDB = require('./src/db');
 const requestLogger = require('./src/middleware/requestLogger');
 
@@ -20,16 +19,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(requestLogger);
-
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, data: null, message: 'Too many requests, please try again later.' },
-});
-
-app.use('/api/', apiLimiter);
 
 app.get('/health', (_req, res) => {
   res.json({ success: true, message: 'Server is running' });
