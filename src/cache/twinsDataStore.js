@@ -4,66 +4,69 @@
  * Loads Student, SGPA and Score collections into indexed Maps on startup so
  * that the twins endpoint can compute results with ZERO database round-trips.
  *
- * Memory footprint:  ~15-25 MB for a typical university dataset.
- * Refresh interval:  every 6 hours (configurable via TWINS_REFRESH_HOURS env).
+ * Multi-college: maintains one independent dataset per connected college.
  *
- * Usage:
- *   const dataStore = require('./cache/twinsDataStore');
- *   await dataStore.init();          // call once after DB connects
- *   const student = dataStore.getStudent('2024UCA1953');
+ * Memory footprint:  ~15-25 MB per college.
+ * Refresh interval:  every 6 hours (configurable via TWINS_REFRESH_HOURS env).
  */
 
-const Student = require('../models/Student');
-const SGPA = require('../models/SGPA');
-const Score = require('../models/Score');
+const { getActiveColleges, getConnection } = require('../db');
+const { getModels } = require('../models');
 
 const REFRESH_MS =
   (parseInt(process.env.TWINS_REFRESH_HOURS, 10) || 6) * 60 * 60 * 1000;
 
-/* ── internal state ── */
-
-/** @type {Map<string, object>}  rollNo → student doc */
-let studentsMap = new Map();
-
-/** @type {Map<string, object[]>}  branch_code → [ student, … ] */
-let studentsByBranch = new Map();
-
-/** @type {Map<string, object>}  rollNo → { [semester]: sgpa } */
-let sgpaMap = new Map();
-
-/** @type {Map<string, object[]>}  rollNo → [ scoreDoc, … ] */
-let scoresRawMap = new Map();
+/* ── per-college state ── */
 
 /**
- * rollNo → { [subject_code]: { marks, grade } }
- * @type {Map<string, object>}
+ * @type {Map<string, {
+ *   studentsMap: Map<string, object>,
+ *   studentsByBranch: Map<string, object[]>,
+ *   sgpaMap: Map<string, object>,
+ *   scoresRawMap: Map<string, object[]>,
+ *   scoresIndexMap: Map<string, object>,
+ *   ready: boolean,
+ *   loading: boolean,
+ *   lastLoaded: Date|null,
+ * }>}
  */
-let scoresIndexMap = new Map();
+const stores = new Map();
 
-let _ready = false;
-let _loading = false;
 let _refreshTimer = null;
-let _lastLoaded = null;
+
+function getStore(college) {
+  if (!stores.has(college)) {
+    stores.set(college, {
+      studentsMap: new Map(),
+      studentsByBranch: new Map(),
+      sgpaMap: new Map(),
+      scoresRawMap: new Map(),
+      scoresIndexMap: new Map(),
+      ready: false,
+      loading: false,
+      lastLoaded: null,
+    });
+  }
+  return stores.get(college);
+}
 
 /* ── loader ── */
 
-async function load() {
-  if (_loading) return;
-  _loading = true;
+async function loadCollege(college) {
+  const store = getStore(college);
+  if (store.loading) return;
+  store.loading = true;
 
   try {
+    const conn = getConnection(college);
+    if (!conn) return;
+    const { Student, SGPA, Score } = getModels(conn, college);
     const t0 = Date.now();
 
     const [students, sgpaRecords, scoreRecords] = await Promise.all([
-      Student.find(
-        {},
-        'rollNo name branch_code year_of_study cgpa',
-      ).lean(),
+      Student.find({}, 'rollNo name branch_code year_of_study cgpa').lean(),
       SGPA.find({}, 'roll_no semester sgpa').lean(),
-      Score.find(
-        {},
-        'roll_no subject_code grade marks semester',
-      ).lean(),
+      Score.find({}, 'roll_no subject_code grade marks semester').lean(),
     ]);
 
     /* ── build maps ── */
@@ -85,10 +88,8 @@ async function load() {
     const newScoresRaw = new Map();
     const newScoresIdx = new Map();
     for (const r of scoreRecords) {
-      // raw array
       if (!newScoresRaw.has(r.roll_no)) newScoresRaw.set(r.roll_no, []);
       newScoresRaw.get(r.roll_no).push(r);
-      // indexed
       if (!newScoresIdx.has(r.roll_no)) newScoresIdx.set(r.roll_no, {});
       newScoresIdx.get(r.roll_no)[r.subject_code] = {
         marks: r.marks,
@@ -98,59 +99,60 @@ async function load() {
 
     /* ── swap atomically ── */
 
-    studentsMap = newStudents;
-    studentsByBranch = newByBranch;
-    sgpaMap = newSgpa;
-    scoresRawMap = newScoresRaw;
-    scoresIndexMap = newScoresIdx;
-    _ready = true;
-    _lastLoaded = new Date();
+    store.studentsMap = newStudents;
+    store.studentsByBranch = newByBranch;
+    store.sgpaMap = newSgpa;
+    store.scoresRawMap = newScoresRaw;
+    store.scoresIndexMap = newScoresIdx;
+    store.ready = true;
+    store.lastLoaded = new Date();
 
     console.log(
-      `[TwinsDataStore] Loaded ${students.length} students, ` +
+      `[TwinsDataStore:${college}] Loaded ${students.length} students, ` +
         `${sgpaRecords.length} SGPA records, ${scoreRecords.length} scores ` +
         `in ${Date.now() - t0}ms`,
     );
   } finally {
-    _loading = false;
+    store.loading = false;
   }
 }
 
 /* ── public API ── */
 
 /**
- * Initialise the store.  Call once after DB connection is established.
- * Starts background auto-refresh.
+ * Initialise the store for all connected colleges.
+ * Call once after DB connections are established.
  */
 async function init() {
-  await load();
-  // Schedule periodic refresh
+  const colleges = getActiveColleges();
+  await Promise.all(colleges.map((c) => loadCollege(c)));
+
   if (_refreshTimer) clearInterval(_refreshTimer);
   _refreshTimer = setInterval(() => {
-    load().catch((err) =>
-      console.error('[TwinsDataStore] Refresh failed:', err.message),
-    );
+    const cols = getActiveColleges();
+    for (const c of cols) {
+      loadCollege(c).catch((err) =>
+        console.error(`[TwinsDataStore:${c}] Refresh failed:`, err.message),
+      );
+    }
   }, REFRESH_MS);
-  // Don't prevent Node from exiting
   if (_refreshTimer.unref) _refreshTimer.unref();
 }
 
-/** Is the store ready to serve requests? */
-function isReady() {
-  return _ready;
+function isReady(college) {
+  return getStore(college).ready;
 }
 
-/** Get a single student by rollNo. */
-function getStudent(rollNo) {
-  return studentsMap.get(rollNo) || null;
+function getStudent(college, rollNo) {
+  return getStore(college).studentsMap.get(rollNo) || null;
 }
 
-/** Get all students in a given CGPA range, optionally filtered by branch. */
-function getCandidates(rollNo, cgpaLow, cgpaHigh, branchCode) {
+function getCandidates(college, rollNo, cgpaLow, cgpaHigh, branchCode) {
+  const store = getStore(college);
   const results = [];
   const source = branchCode
-    ? studentsByBranch.get(branchCode) || []
-    : studentsMap.values();
+    ? store.studentsByBranch.get(branchCode) || []
+    : store.studentsMap.values();
 
   for (const s of source) {
     if (s.rollNo === rollNo) continue;
@@ -159,10 +161,10 @@ function getCandidates(rollNo, cgpaLow, cgpaHigh, branchCode) {
   return results;
 }
 
-/** Get all students NOT in the given branch within CGPA range. */
-function getCandidatesOtherDept(rollNo, cgpaLow, cgpaHigh, excludeBranch) {
+function getCandidatesOtherDept(college, rollNo, cgpaLow, cgpaHigh, excludeBranch) {
+  const store = getStore(college);
   const results = [];
-  for (const [branch, students] of studentsByBranch) {
+  for (const [branch, students] of store.studentsByBranch) {
     if (branch === excludeBranch) continue;
     for (const s of students) {
       if (s.rollNo === rollNo) continue;
@@ -172,29 +174,29 @@ function getCandidatesOtherDept(rollNo, cgpaLow, cgpaHigh, excludeBranch) {
   return results;
 }
 
-/** Get SGPA map { semester: sgpa } for a roll number. */
-function getSgpa(rollNo) {
-  return sgpaMap.get(rollNo) || {};
+function getSgpa(college, rollNo) {
+  return getStore(college).sgpaMap.get(rollNo) || {};
 }
 
-/** Get raw score records array for a roll number. */
-function getScoresRaw(rollNo) {
-  return scoresRawMap.get(rollNo) || [];
+function getScoresRaw(college, rollNo) {
+  return getStore(college).scoresRawMap.get(rollNo) || [];
 }
 
-/** Get indexed scores { subject_code: { marks, grade } } for a roll number. */
-function getScoresIndex(rollNo) {
-  return scoresIndexMap.get(rollNo) || {};
+function getScoresIndex(college, rollNo) {
+  return getStore(college).scoresIndexMap.get(rollNo) || {};
 }
 
-/** When the store was last loaded. */
-function lastLoaded() {
-  return _lastLoaded;
+function lastLoaded(college) {
+  return getStore(college).lastLoaded;
 }
 
-/** Force an immediate reload (e.g. after a data import). */
-async function refresh() {
-  await load();
+async function refresh(college) {
+  if (college) {
+    await loadCollege(college);
+  } else {
+    const colleges = getActiveColleges();
+    await Promise.all(colleges.map((c) => loadCollege(c)));
+  }
 }
 
 module.exports = {

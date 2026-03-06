@@ -1,6 +1,3 @@
-const Score = require('../models/Score');
-const Student = require('../models/Student');
-
 const PAGE_LIMIT = 20;
 
 const LOW_GRADES = ['C', 'D', 'F','FD'];
@@ -39,6 +36,10 @@ const getSubjectDifficulty = async (req, res, next) => {
     let { branch } = req.query;
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
 
+    const { Score, Student } = req.models;
+
+    // When rollNo is provided, find the student's branch and their subject codes
+    let studentSubjectCodes = null;
     if (rollNo) {
       const student = await Student.findOne({ rollNo }, 'branch_code').lean();
       if (!student) {
@@ -49,6 +50,11 @@ const getSubjectDifficulty = async (req, res, next) => {
         });
       }
       branch = student.branch_code;
+
+      // Get this student's subject codes to scope the difficulty query
+      // (needed when scores collection lacks branch_code, e.g. DTU)
+      const studentScores = await Score.find({ roll_no: rollNo }, 'subject_code').lean();
+      studentSubjectCodes = [...new Set(studentScores.map((s) => s.subject_code))];
     }
     const limit = PAGE_LIMIT;
 
@@ -57,7 +63,12 @@ const getSubjectDifficulty = async (req, res, next) => {
       const semInt = parseInt(semester, 10);
       matchStage.semester = { $in: [semInt, String(semInt)] };
     }
-    if (branch) {
+
+    // If we have the student's subject codes, filter by those directly
+    // (this is more reliable than branch_code which may not exist in all DBs)
+    if (studentSubjectCodes) {
+      matchStage.subject_code = { $in: studentSubjectCodes };
+    } else if (branch) {
       const branches = branch
         .split(',')
         .map((b) => b.trim().toUpperCase())

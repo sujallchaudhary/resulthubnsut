@@ -1,10 +1,13 @@
-const RequestLog = require('../models/RequestLog');
-
 const requestLogger = (req, res, next) => {
   res.on('finish', () => {
-    // Derive feature from path: /api/<feature>/... or /health
+    // Derive feature from path: /api/<college>/<feature>/... or /health
     const segments = req.path.split('/').filter(Boolean);
-    const feature = segments[0] === 'api' ? (segments[1] || null) : (segments[0] || null);
+    // With college prefix: /api/<college>/<feature>/...
+    const feature = segments[0] === 'api' ? (segments[2] || null) : (segments[0] || null);
+
+    // Only log if we have a college-scoped RequestLog model
+    const RequestLog = req.models?.RequestLog;
+    if (!RequestLog) return;
 
     RequestLog.create({
       path: req.path,

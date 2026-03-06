@@ -2,8 +2,9 @@ require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
-const connectDB = require('./src/db');
+const { connectDB, getActiveColleges } = require('./src/db');
 const requestLogger = require('./src/middleware/requestLogger');
+const collegeContext = require('./src/middleware/collegeContext');
 
 const studentsRouter = require('./src/routes/students');
 const statsRouter = require('./src/routes/stats');
@@ -24,11 +25,17 @@ app.get('/health', (_req, res) => {
   res.json({ success: true, message: 'Server is running' });
 });
 
-app.use('/api/students', studentsRouter);
-app.use('/api/stats', statsRouter);
-app.use('/api/filter', filterRouter);
-app.use('/api/wrapped', wrappedRouter);
-app.use('/api/subjects', subjectsRouter);
+/* List available colleges */
+app.get('/api/colleges', (_req, res) => {
+  res.json({ success: true, data: getActiveColleges() });
+});
+
+/* All data routes are prefixed with /:college */
+app.use('/api/:college/students', collegeContext, studentsRouter);
+app.use('/api/:college/stats',    collegeContext, statsRouter);
+app.use('/api/:college/filter',   collegeContext, filterRouter);
+app.use('/api/:college/wrapped',  collegeContext, wrappedRouter);
+app.use('/api/:college/subjects', collegeContext, subjectsRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ success: false, data: null, message: 'Route not found' });

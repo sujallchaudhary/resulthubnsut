@@ -1,18 +1,15 @@
-const Student = require('../models/Student');
-const SGPA = require('../models/SGPA');
-const Score = require('../models/Score');
-
 const PAGE_LIMIT = 20;
 
 const GRADE_ORDER = ['O', 'A+', 'A', 'B+', 'B', 'C', 'D', 'F', 'AB'];
 
 /**
- * GET /api/students
+ * GET /api/:college/students
  * Returns paginated list of all students with semester-wise SGPA.
  * Page size is fixed at 20.
  */
 const getAllStudents = async (req, res, next) => {
   try {
+    const { Student, SGPA } = req.models;
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = PAGE_LIMIT;
     const skip = (page - 1) * limit;
@@ -85,6 +82,7 @@ const getAllStudents = async (req, res, next) => {
  */
 const getStudentByRollNo = async (req, res, next) => {
   try {
+    const { Student, SGPA, Score } = req.models;
     const { rollNo } = req.params;
 
     const student = await Student.findOne({ rollNo }, '-__v -createdAt -updatedAt').lean();

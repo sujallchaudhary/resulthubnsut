@@ -133,7 +133,7 @@ function clearResultCache() {
 /* ── main handler ── */
 
 /**
- * GET /api/students/:rollNo/twins?limit=10
+ * GET /api/:college/students/:rollNo/twins?limit=10
  *
  * ZERO database queries at request time.  All data is served from the
  * in-memory data store that is loaded on startup and refreshed every 6 h.
@@ -144,13 +144,14 @@ function clearResultCache() {
 const getAcademicTwins = async (req, res, next) => {
   try {
     const { rollNo } = req.params;
+    const college = req.college;
     const limit = Math.min(
       Math.max(parseInt(req.query.limit, 10) || DEFAULT_LIMIT, 1),
       MAX_LIMIT,
     );
 
     /* ── guard: data store must be ready ── */
-    if (!dataStore.isReady()) {
+    if (!dataStore.isReady(college)) {
       return res.status(503).json({
         success: false,
         data: null,
@@ -159,7 +160,7 @@ const getAcademicTwins = async (req, res, next) => {
     }
 
     /* ── result cache hit? ── */
-    const cacheKey = `${rollNo}:${limit}`;
+    const cacheKey = `${college}:${rollNo}:${limit}`;
     const cached = getCached(cacheKey);
     if (cached) {
       return res.json(cached);
@@ -167,7 +168,7 @@ const getAcademicTwins = async (req, res, next) => {
 
     /* ── 1. Target student (in-memory) ── */
 
-    const student = dataStore.getStudent(rollNo);
+    const student = dataStore.getStudent(college, rollNo);
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -176,9 +177,9 @@ const getAcademicTwins = async (req, res, next) => {
       });
     }
 
-    const targetSgpaMap = dataStore.getSgpa(rollNo);
-    const targetScoreRecords = dataStore.getScoresRaw(rollNo);
-    const targetSubjectMap = dataStore.getScoresIndex(rollNo);
+    const targetSgpaMap = dataStore.getSgpa(college, rollNo);
+    const targetScoreRecords = dataStore.getScoresRaw(college, rollNo);
+    const targetSubjectMap = dataStore.getScoresIndex(college, rollNo);
     const targetSW = identifyStrongWeak(targetScoreRecords);
     const targetGradeDist = buildGradeDistribution(targetScoreRecords);
     const targetSemGradeDists = buildSemesterGradeDists(targetScoreRecords);
@@ -190,10 +191,10 @@ const getAcademicTwins = async (req, res, next) => {
     const targetCgpa = student.cgpa;
 
     let sameDeptCandidates = dataStore.getCandidates(
-      rollNo, cgpaLow, cgpaHigh, student.branch_code,
+      college, rollNo, cgpaLow, cgpaHigh, student.branch_code,
     );
     let otherDeptCandidates = dataStore.getCandidatesOtherDept(
-      rollNo, cgpaLow, cgpaHigh, student.branch_code,
+      college, rollNo, cgpaLow, cgpaHigh, student.branch_code,
     );
 
     // Sort by CGPA proximity & cap
@@ -226,7 +227,7 @@ const getAcademicTwins = async (req, res, next) => {
      * ═══════════════════════════════════════════════════════════ */
 
     const phase1Scored = allCandidates.map((cand) => {
-      const cSgpa = dataStore.getSgpa(cand.rollNo);
+      const cSgpa = dataStore.getSgpa(college, cand.rollNo);
       const sgpa = computeSgpaSimilarity(targetSgpaMap, cSgpa);
       const cgpaSim = computeCgpaSimilarity(targetCgpa, cand.cgpa);
       const quickScore = sgpa.count > 0 ? sgpa.score * 0.6 + cgpaSim * 0.4 : cgpaSim;
@@ -246,8 +247,8 @@ const getAcademicTwins = async (req, res, next) => {
      * ═══════════════════════════════════════════════════════════ */
 
     const scored = shortlist.map((cand) => {
-      const cScores = dataStore.getScoresIndex(cand.rollNo);
-      const cRawScores = dataStore.getScoresRaw(cand.rollNo);
+      const cScores = dataStore.getScoresIndex(college, cand.rollNo);
+      const cRawScores = dataStore.getScoresRaw(college, cand.rollNo);
 
       const sgpa = cand._sgpa;
       const cgpaSim = cand._cgpaSim;
@@ -329,12 +330,12 @@ const getAcademicTwins = async (req, res, next) => {
     /* ── Enrich top twins ── */
 
     for (const twin of topTwins) {
-      const scores = dataStore.getScoresRaw(twin.rollNo);
+      const scores = dataStore.getScoresRaw(college, twin.rollNo);
       const sw = identifyStrongWeak(scores);
       twin.sharedStrongSubjects = targetSW.strong.filter((s) => sw.strong.includes(s));
       twin.sharedWeakSubjects = targetSW.weak.filter((s) => sw.weak.includes(s));
 
-      const cSgpa = dataStore.getSgpa(twin.rollNo);
+      const cSgpa = dataStore.getSgpa(college, twin.rollNo);
       twin.sgpaTrend = Object.entries(cSgpa)
         .sort(([a], [b]) => Number(a) - Number(b))
         .map(([, val]) => val);

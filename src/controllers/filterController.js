@@ -1,6 +1,3 @@
-const Student = require('../models/Student');
-const SGPA = require('../models/SGPA');
-
 const PAGE_LIMIT = 20;
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -11,6 +8,7 @@ const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  */
 const getFilterOptions = async (_req, res, next) => {
   try {
+    const { Student } = _req.models;
     const [years, branches] = await Promise.all([
       Student.distinct('year_of_study'),
       Student.distinct('branch_code'),
@@ -43,6 +41,7 @@ const getFilterOptions = async (_req, res, next) => {
  */
 const filterStudents = async (req, res, next) => {
   try {
+    const { Student, SGPA } = req.models;
     const { year, branch, query: searchQuery } = req.query;
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = PAGE_LIMIT;

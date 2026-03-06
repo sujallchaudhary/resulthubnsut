@@ -6,6 +6,13 @@ const { listLimiter, profileLimiter, twinsLimiter } = require('../middleware/rat
 
 const router = Router();
 
+/** Extract rollNo from wildcard param (supports slashes like 24/CS/108). */
+function extractRollNo(req, _res, next) {
+  const wild = req.params.wildcard;
+  req.params.rollNo = Array.isArray(wild) ? wild.join('/') : wild;
+  next();
+}
+
 const handleValidation = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -30,8 +37,9 @@ router.get(
 );
 
 router.get(
-  '/:rollNo/twins',
+  '/{*wildcard}/twins',
   twinsLimiter,
+  extractRollNo,
   [
     query('limit')
       .optional()
@@ -42,6 +50,6 @@ router.get(
   getAcademicTwins
 );
 
-router.get('/:rollNo', profileLimiter, getStudentByRollNo);
+router.get('/{*wildcard}', profileLimiter, extractRollNo, getStudentByRollNo);
 
 module.exports = router;

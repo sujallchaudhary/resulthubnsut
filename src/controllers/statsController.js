@@ -1,15 +1,10 @@
-const Student = require('../models/Student');
-const SGPA = require('../models/SGPA');
-const Score = require('../models/Score');
-const Department = require('../models/Department');
-const CachedStats = require('../models/CachedStats');
-
 const STATS_KEY = 'yearWiseStats';
 
 /**
  * Compute all year-wise statistics from scratch.
  */
-const computeStats = async () => {
+const computeStats = async (models) => {
+  const { Student, SGPA, Score, Department } = models;
   const [
     yearAgg,
     departmentStats,
@@ -190,6 +185,7 @@ const computeStats = async () => {
  */
 const getStats = async (req, res, next) => {
   try {
+    const { CachedStats } = req.models;
     const cached = await CachedStats.findOne({ key: STATS_KEY }).lean();
 
     if (cached) {
@@ -201,9 +197,9 @@ const getStats = async (req, res, next) => {
       });
     }
 
-    const yearWiseData = await computeStats();
+    const yearWiseData = await computeStats(req.models);
 
-    await CachedStats.findOneAndUpdate(
+    await req.models.CachedStats.findOneAndUpdate(
       { key: STATS_KEY },
       { data: yearWiseData },
       { upsert: true },
@@ -225,7 +221,8 @@ const getStats = async (req, res, next) => {
  */
 const resetStats = async (req, res, next) => {
   try {
-    const yearWiseData = await computeStats();
+    const { CachedStats } = req.models;
+    const yearWiseData = await computeStats(req.models);
 
     const doc = await CachedStats.findOneAndUpdate(
       { key: STATS_KEY },
@@ -251,6 +248,7 @@ const resetStats = async (req, res, next) => {
  */
 const getBattle = async (req, res, next) => {
   try {
+    const { Student, CachedStats } = req.models;
     const { type, a, b } = req.query;
 
     if (!type || !a || !b) {

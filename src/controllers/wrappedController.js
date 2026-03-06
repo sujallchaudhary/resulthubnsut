@@ -1,6 +1,3 @@
-const Student = require('../models/Student');
-const SGPA = require('../models/SGPA');
-const Score = require('../models/Score');
 const OpenAI = require('openai');
 
 const GRADE_ORDER = ['O', 'A+', 'A', 'B+', 'B', 'C', 'D', 'F', 'AB'];
@@ -142,6 +139,7 @@ const determinePersonality = (allSgpa, currentSemester, currentSgpa, subjectRank
  */
 const getWrapped = async (req, res, next) => {
   try {
+    const { Student, SGPA, Score } = req.models;
     const { rollNo } = req.params;
     const semesterNum = parseInt(req.params.semester, 10);
 
