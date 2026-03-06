@@ -1,7 +1,6 @@
 const { Router } = require('express');
 const { query, validationResult } = require('express-validator');
 const { filterStudents, getFilterOptions } = require('../controllers/filterController');
-const { listLimiter } = require('../middleware/rateLimits');
 
 const router = Router();
 
@@ -18,11 +17,10 @@ const handleValidation = (req, res, next) => {
   next();
 };
 
-router.get('/options', listLimiter, getFilterOptions);
+router.get('/options', getFilterOptions);
 
 router.get(
   '/',
-  listLimiter,
   [
     query('year').optional().isString().trim().notEmpty().withMessage('year must be a non-empty string'),
     query('branch').optional().isString().trim().notEmpty().withMessage('branch must be a non-empty string'),

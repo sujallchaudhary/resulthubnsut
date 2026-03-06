@@ -1,7 +1,6 @@
 const { Router } = require('express');
 const { query, validationResult } = require('express-validator');
 const { getSubjectDifficulty } = require('../controllers/subjectController');
-const { statsLimiter } = require('../middleware/rateLimits');
 
 const router = Router();
 
@@ -20,7 +19,6 @@ const handleValidation = (req, res, next) => {
 
 router.get(
   '/difficulty',
-  statsLimiter,
   [
     query('semester').optional().isInt({ min: 1 }).withMessage('semester must be a positive integer'),
     query('branch').optional().isString().trim().notEmpty().withMessage('branch must be a non-empty string'),

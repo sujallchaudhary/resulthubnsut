@@ -1,7 +1,6 @@
 const { Router } = require('express');
 const { param, validationResult } = require('express-validator');
 const { getWrapped } = require('../controllers/wrappedController');
-const { profileLimiter } = require('../middleware/rateLimits');
 
 const router = Router();
 
@@ -30,7 +29,6 @@ const handleValidation = (req, res, next) => {
 
 router.get(
   '/{*wildcard}',
-  profileLimiter,
   extractWrappedParams,
   [
     param('rollNo').isString().trim().notEmpty().withMessage('rollNo is required'),
