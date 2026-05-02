@@ -1,5 +1,3 @@
-const dataStore = require('../cache/twinsDataStore');
-
 /* ── constants ── */
 
 const GRADE_TO_NUMERIC = {
@@ -14,8 +12,6 @@ const CANDIDATE_CAP_SAME_DEPT = 600;
 const CANDIDATE_CAP_OTHER_DEPT = 400;
 const PHASE1_SHORTLIST = 120;
 const DIVERSITY_RATIO = 0.3;
-
-const RESULT_CACHE = new Map();
 
 /* ── weight presets ── */
 
@@ -115,60 +111,26 @@ function identifyStrongWeak(scores, n = 3) {
   };
 }
 
-/* ── result cache helpers ── */
-
-function getCached(key) {
-  return RESULT_CACHE.get(key) ?? null;
-}
-
-function setCache(key, data) {
-  RESULT_CACHE.set(key, data);
-}
-
-/** Clear result cache (called when data store refreshes). */
-function clearResultCache() {
-  RESULT_CACHE.clear();
-}
-
 /* ── main handler ── */
 
 /**
  * GET /api/:college/students/:rollNo/twins?limit=10
  *
- * ZERO database queries at request time.  All data is served from the
- * in-memory data store that is loaded on startup and refreshed every 6 h.
- *
- * Result-level cache (12 h TTL) makes repeat requests ~1 ms.
- * Cold computation for a new rollNo is ~20-50 ms (pure JS, no I/O).
+ * Queries the database directly for each request.
  */
 const getAcademicTwins = async (req, res, next) => {
   try {
     const { rollNo } = req.params;
     const college = req.college;
+    const { Student, SGPA, Score } = req.models;
     const limit = Math.min(
       Math.max(parseInt(req.query.limit, 10) || DEFAULT_LIMIT, 1),
       MAX_LIMIT,
     );
 
-    /* ── guard: data store must be ready ── */
-    if (!dataStore.isReady(college)) {
-      return res.status(503).json({
-        success: false,
-        data: null,
-        message: 'Academic twins data is still loading. Please retry in a few seconds.',
-      });
-    }
+    /* ── 1. Target student ── */
 
-    /* ── result cache hit? ── */
-    const cacheKey = `${college}:${rollNo}:${limit}`;
-    const cached = getCached(cacheKey);
-    if (cached) {
-      return res.json(cached);
-    }
-
-    /* ── 1. Target student (in-memory) ── */
-
-    const student = dataStore.getStudent(college, rollNo);
+    const student = await Student.findOne({ rollNo }, 'rollNo name branch_code year_of_study cgpa').lean();
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -177,39 +139,49 @@ const getAcademicTwins = async (req, res, next) => {
       });
     }
 
-    const targetSgpaMap = dataStore.getSgpa(college, rollNo);
-    const targetScoreRecords = dataStore.getScoresRaw(college, rollNo);
-    const targetSubjectMap = dataStore.getScoresIndex(college, rollNo);
+    const [targetSgpaRecords, targetScoreRecords] = await Promise.all([
+      SGPA.find({ roll_no: rollNo }, 'roll_no semester sgpa').lean(),
+      Score.find({ roll_no: rollNo }, 'roll_no subject_code grade marks semester').lean(),
+    ]);
+
+    const targetSgpaMap = {};
+    for (const r of targetSgpaRecords) targetSgpaMap[r.semester] = r.sgpa;
+
+    const targetSubjectMap = {};
+    for (const r of targetScoreRecords) {
+      targetSubjectMap[r.subject_code] = { marks: r.marks, grade: r.grade };
+    }
+
     const targetSW = identifyStrongWeak(targetScoreRecords);
     const targetGradeDist = buildGradeDistribution(targetScoreRecords);
     const targetSemGradeDists = buildSemesterGradeDists(targetScoreRecords);
 
-    /* ── 2. Candidates (in-memory, sorted by CGPA proximity) ── */
+    /* ── 2. Candidates from DB ── */
 
     const cgpaLow = student.cgpa - CGPA_SEARCH_RANGE;
     const cgpaHigh = student.cgpa + CGPA_SEARCH_RANGE;
     const targetCgpa = student.cgpa;
 
-    let sameDeptCandidates = dataStore.getCandidates(
-      college, rollNo, cgpaLow, cgpaHigh, student.branch_code,
-    );
-    let otherDeptCandidates = dataStore.getCandidatesOtherDept(
-      college, rollNo, cgpaLow, cgpaHigh, student.branch_code,
-    );
+    const [sameDeptCandidates, otherDeptCandidates] = await Promise.all([
+      Student.find(
+        { rollNo: { $ne: rollNo }, branch_code: student.branch_code, cgpa: { $gte: cgpaLow, $lte: cgpaHigh } },
+        'rollNo name branch_code year_of_study cgpa',
+      ).sort({ cgpa: -1 }).limit(CANDIDATE_CAP_SAME_DEPT).lean(),
+      Student.find(
+        { rollNo: { $ne: rollNo }, branch_code: { $ne: student.branch_code }, cgpa: { $gte: cgpaLow, $lte: cgpaHigh } },
+        'rollNo name branch_code year_of_study cgpa',
+      ).sort({ cgpa: -1 }).limit(CANDIDATE_CAP_OTHER_DEPT).lean(),
+    ]);
 
-    // Sort by CGPA proximity & cap
+    // Sort by CGPA proximity
     const byCgpaProx = (a, b) => Math.abs(a.cgpa - targetCgpa) - Math.abs(b.cgpa - targetCgpa);
     sameDeptCandidates.sort(byCgpaProx);
     otherDeptCandidates.sort(byCgpaProx);
-    if (sameDeptCandidates.length > CANDIDATE_CAP_SAME_DEPT)
-      sameDeptCandidates = sameDeptCandidates.slice(0, CANDIDATE_CAP_SAME_DEPT);
-    if (otherDeptCandidates.length > CANDIDATE_CAP_OTHER_DEPT)
-      otherDeptCandidates = otherDeptCandidates.slice(0, CANDIDATE_CAP_OTHER_DEPT);
 
     const allCandidates = [...sameDeptCandidates, ...otherDeptCandidates];
 
     if (allCandidates.length === 0) {
-      const emptyResp = {
+      return res.json({
         success: true,
         data: {
           student: { rollNo, name: student.name, branch_code: student.branch_code, year_of_study: student.year_of_study, cgpa: student.cgpa },
@@ -217,17 +189,28 @@ const getAcademicTwins = async (req, res, next) => {
           poolStats: { totalCompared: 0, sameDepartment: 0, otherDepartment: 0, sameYear: 0, differentYear: 0 },
         },
         message: 'No academic twins found',
-      };
-      setCache(cacheKey, emptyResp);
-      return res.json(emptyResp);
+      });
     }
 
     /* ═══════════════════════════════════════════════════════════
-     *  PHASE 1 — cheap SGPA + CGPA ranking (all in-memory)
+     *  PHASE 1 — cheap SGPA + CGPA ranking (fetch SGPA for candidates)
      * ═══════════════════════════════════════════════════════════ */
 
+    const candidateRollNos = allCandidates.map((c) => c.rollNo);
+    const candidateSgpaRecords = await SGPA.find(
+      { roll_no: { $in: candidateRollNos } },
+      'roll_no semester sgpa',
+    ).lean();
+
+    // Build SGPA map per candidate
+    const candSgpaByRoll = {};
+    for (const r of candidateSgpaRecords) {
+      if (!candSgpaByRoll[r.roll_no]) candSgpaByRoll[r.roll_no] = {};
+      candSgpaByRoll[r.roll_no][r.semester] = r.sgpa;
+    }
+
     const phase1Scored = allCandidates.map((cand) => {
-      const cSgpa = dataStore.getSgpa(college, cand.rollNo);
+      const cSgpa = candSgpaByRoll[cand.rollNo] || {};
       const sgpa = computeSgpaSimilarity(targetSgpaMap, cSgpa);
       const cgpaSim = computeCgpaSimilarity(targetCgpa, cand.cgpa);
       const quickScore = sgpa.count > 0 ? sgpa.score * 0.6 + cgpaSim * 0.4 : cgpaSim;
@@ -243,12 +226,28 @@ const getAcademicTwins = async (req, res, next) => {
     const shortlist = [...p1SameYear, ...p1DiffYear];
 
     /* ═══════════════════════════════════════════════════════════
-     *  PHASE 2 — full 5-dimension scoring (all in-memory)
+     *  PHASE 2 — full 5-dimension scoring (fetch scores for shortlist)
      * ═══════════════════════════════════════════════════════════ */
 
+    const shortlistRollNos = shortlist.map((c) => c.rollNo);
+    const shortlistScoreRecords = await Score.find(
+      { roll_no: { $in: shortlistRollNos } },
+      'roll_no subject_code grade marks semester',
+    ).lean();
+
+    // Build per-candidate score maps
+    const candScoresRawByRoll = {};
+    const candScoresIdxByRoll = {};
+    for (const r of shortlistScoreRecords) {
+      if (!candScoresRawByRoll[r.roll_no]) candScoresRawByRoll[r.roll_no] = [];
+      candScoresRawByRoll[r.roll_no].push(r);
+      if (!candScoresIdxByRoll[r.roll_no]) candScoresIdxByRoll[r.roll_no] = {};
+      candScoresIdxByRoll[r.roll_no][r.subject_code] = { marks: r.marks, grade: r.grade };
+    }
+
     const scored = shortlist.map((cand) => {
-      const cScores = dataStore.getScoresIndex(college, cand.rollNo);
-      const cRawScores = dataStore.getScoresRaw(college, cand.rollNo);
+      const cScores = candScoresIdxByRoll[cand.rollNo] || {};
+      const cRawScores = candScoresRawByRoll[cand.rollNo] || [];
 
       const sgpa = cand._sgpa;
       const cgpaSim = cand._cgpaSim;
@@ -330,12 +329,12 @@ const getAcademicTwins = async (req, res, next) => {
     /* ── Enrich top twins ── */
 
     for (const twin of topTwins) {
-      const scores = dataStore.getScoresRaw(college, twin.rollNo);
+      const scores = candScoresRawByRoll[twin.rollNo] || [];
       const sw = identifyStrongWeak(scores);
       twin.sharedStrongSubjects = targetSW.strong.filter((s) => sw.strong.includes(s));
       twin.sharedWeakSubjects = targetSW.weak.filter((s) => sw.weak.includes(s));
 
-      const cSgpa = dataStore.getSgpa(college, twin.rollNo);
+      const cSgpa = candSgpaByRoll[twin.rollNo] || {};
       twin.sgpaTrend = Object.entries(cSgpa)
         .sort(([a], [b]) => Number(a) - Number(b))
         .map(([, val]) => val);
@@ -361,11 +360,10 @@ const getAcademicTwins = async (req, res, next) => {
       message: 'Academic twins found successfully',
     };
 
-    setCache(cacheKey, response);
     return res.json(response);
   } catch (err) {
     next(err);
   }
 };
 
-module.exports = { getAcademicTwins, clearResultCache };
+module.exports = { getAcademicTwins };

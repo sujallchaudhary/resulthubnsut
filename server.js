@@ -9,7 +9,6 @@ const collegeContext = require('./src/middleware/collegeContext');
 const studentsRouter = require('./src/routes/students');
 const statsRouter = require('./src/routes/stats');
 const filterRouter = require('./src/routes/filter');
-const twinsDataStore = require('./src/cache/twinsDataStore');
 const wrappedRouter = require('./src/routes/wrapped');
 const subjectsRouter = require('./src/routes/subjects');
 
@@ -56,10 +55,6 @@ const PORT = process.env.PORT || 3000;
 
 const start = async () => {
   await connectDB();
-
-  twinsDataStore.init().catch((err) => {
-    console.error('TwinsDataStore initial load failed:', err.message);
-  });
 
   app.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
