@@ -162,18 +162,30 @@ const filterStudents = async (req, res, next) => {
       return 'filtered';
     };
 
-    const data = pageSlice.map((student) => ({
-      rollNo: student.rollNo,
-      name: student.name,
-      branch_code: student.branch_code,
-      year_of_study: student.year_of_study,
-      cgpa: student.cgpa,
-      rank: getRank(student),
-      rank_type: getRankType(student),
-      percentile: student.percentile,
-      credits_completed: student.credits_completed,
-      semesters: sgpaByRoll[student.rollNo] || [],
-    }));
+    const getPercentile = (student, rank) => {
+      if (noYearFilter && noBranchFilter) return student.percentile;
+      if (total > 0) {
+        // dynamic percentile calculation: (total - rank) / total * 100
+        return Math.max(0, Math.round(((total - rank) / total) * 100));
+      }
+      return 0;
+    };
+
+    const data = pageSlice.map((student) => {
+      const rank = getRank(student);
+      return {
+        rollNo: student.rollNo,
+        name: student.name,
+        branch_code: student.branch_code,
+        year_of_study: student.year_of_study,
+        cgpa: student.cgpa,
+        rank: rank,
+        rank_type: getRankType(student),
+        percentile: getPercentile(student, rank),
+        credits_completed: student.credits_completed,
+        semesters: sgpaByRoll[student.rollNo] || [],
+      };
+    });
 
     const totalPages = Math.ceil(total / limit);
 
