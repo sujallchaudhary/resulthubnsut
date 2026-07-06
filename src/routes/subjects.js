@@ -1,6 +1,6 @@
 const { Router } = require('express');
-const { query, validationResult } = require('express-validator');
-const { getSubjectDifficulty } = require('../controllers/subjectController');
+const { param, validationResult } = require('express-validator');
+const { getSubjectAnalytics, getSubjectCodes } = require('../controllers/subjectController');
 
 const router = Router();
 
@@ -17,16 +17,13 @@ const handleValidation = (req, res, next) => {
   next();
 };
 
+router.get('/codes', getSubjectCodes);
+
 router.get(
-  '/difficulty',
-  [
-    query('semester').optional().isInt({ min: 1 }).withMessage('semester must be a positive integer'),
-    query('branch').optional().isString().trim().notEmpty().withMessage('branch must be a non-empty string'),
-    query('rollNo').optional().isString().trim().notEmpty().withMessage('rollNo must be a non-empty string'),
-    query('page').optional().isInt({ min: 1 }).withMessage('page must be a positive integer'),
-  ],
+  '/:code/analytics',
+  [param('code').isString().trim().notEmpty().withMessage('code must be a non-empty string')],
   handleValidation,
-  getSubjectDifficulty
+  getSubjectAnalytics
 );
 
 module.exports = router;
