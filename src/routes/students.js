@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { query, validationResult } = require('express-validator');
-const { getAllStudents, getStudentByRollNo } = require('../controllers/studentController');
+const { getAllStudents, getStudentByRollNo, recordProfileView } = require('../controllers/studentController');
 const { getAcademicTwins } = require('../controllers/twinsController');
 
 const router = Router();
@@ -46,6 +46,8 @@ router.get(
   handleValidation,
   getAcademicTwins
 );
+
+router.post('/{*wildcard}/view', extractRollNo, recordProfileView);
 
 router.get('/{*wildcard}', extractRollNo, getStudentByRollNo);
 

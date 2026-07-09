@@ -157,6 +157,7 @@ const getStudentByRollNo = async (req, res, next) => {
         branch_rank: student.branch_rank,
         percentile: student.percentile,
         credits_completed: student.credits_completed,
+        profile_views: student.profile_views || 0,
         semesters,
         stats: {
           total_subjects: scoreRecords.length,
@@ -173,4 +174,37 @@ const getStudentByRollNo = async (req, res, next) => {
   }
 };
 
-module.exports = { getAllStudents, getStudentByRollNo };
+/**
+ * POST /api/students/:rollNo/view
+ * Increments the profile view counter and returns the new count.
+ */
+const recordProfileView = async (req, res, next) => {
+  try {
+    const { Student } = req.models;
+    const { rollNo } = req.params;
+
+    const student = await Student.findOneAndUpdate(
+      { rollNo },
+      { $inc: { profile_views: 1 } },
+      { new: true, select: 'rollNo profile_views' }
+    ).lean();
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        message: `Student with roll number '${rollNo}' not found`,
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: { rollNo: student.rollNo, profile_views: student.profile_views },
+      message: 'Profile view recorded',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getAllStudents, getStudentByRollNo, recordProfileView };

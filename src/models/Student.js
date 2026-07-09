@@ -11,6 +11,7 @@ const studentSchema = new mongoose.Schema(
     percentile: { type: Number, default: 0 },
     year_of_study: { type: String, required: true, index: true },
     branch_rank: { type: Number, default: 0 },
+    profile_views: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
